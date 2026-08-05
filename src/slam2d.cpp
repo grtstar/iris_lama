@@ -94,7 +94,7 @@ lama::Slam2D::Slam2D(const Options& options)
     distance_map_ = new DynamicDistanceMap(options.resolution, options.patch_size);
     distance_map_->setMaxDistance(options.l2_max);
 
-    occupancy_map_ = new FrequencyOccupancyMap(options.resolution, options.patch_size);
+    occupancy_map_ = new ProbabilisticOccupancyMap(options.resolution, options.patch_size);
 
     distance_map_->useCompression(options.use_compression,  options.cache_size, options.calgorithm);
     occupancy_map_->useCompression(options.use_compression, options.cache_size, options.calgorithm);

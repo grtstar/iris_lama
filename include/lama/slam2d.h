@@ -41,6 +41,7 @@
 
 #include "sdm/dynamic_distance_map.h"
 #include "sdm/frequency_occupancy_map.h"
+#include "sdm/probabilistic_occupancy_map.h"
 #include "sdm/export.h"
 
 namespace lama {
@@ -148,7 +149,7 @@ public:
     inline Pose2D getPose() const
     { return pose_; }
 
-    const FrequencyOccupancyMap* getOccupancyMap() const
+    const ProbabilisticOccupancyMap* getOccupancyMap() const
     { return occupancy_map_; }
 
     const DynamicDistanceMap* getDistanceMap() const
@@ -171,7 +172,7 @@ private:
     SolverOptions solver_options_;
 
     DynamicDistanceMap*    distance_map_;
-    FrequencyOccupancyMap* occupancy_map_;
+    ProbabilisticOccupancyMap* occupancy_map_;
 
     Pose2D odom_;
     Pose2D pose_;

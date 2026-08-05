@@ -148,8 +148,8 @@ bool lama::FrequencyOccupancyMap::isUnknown(const Vector3ui& coordinates) const
 
 void lama::FrequencyOccupancyMap::prune()
 {
-    visit_all_cells([&](auto& coords){
-        frequency* cell = (frequency*) get(coords);
+    visit_all_cells([this](const Vector3ui& coords){
+        frequency* cell = (frequency*) this->get(coords);
         if (cell->visited == 1 and (cell->occupied == 0 or cell->occupied == 1)){
             cell->visited  = 0;
             cell->occupied = 0;

@@ -123,7 +123,13 @@ public:
      * @returns The corresponding discrete coordinates.
      */
     inline Vector3ui w2m(const Vector3d& coordinates) const
-    { return ((tf_ * coordinates).array() + 0.5).cast<uint32_t>(); }
+    {
+        const Vector3d map_coordinates = tf_ * coordinates;
+        return Vector3ui(
+            static_cast<uint32_t>(map_coordinates.x() + 0.5),
+            static_cast<uint32_t>(map_coordinates.y() + 0.5),
+            static_cast<uint32_t>(map_coordinates.z() + 0.5));
+    }
 
     /**
      * World to map coordinates.
@@ -145,7 +151,13 @@ public:
      * @returns The corresponding continuous coordinates.
      */
     inline Vector3d m2w(const Vector3ui& coordinates) const
-    { return tf_inv_ * coordinates.cast<double>(); }
+    {
+        const Vector3d map_coordinates(
+            static_cast<double>(coordinates.x()),
+            static_cast<double>(coordinates.y()),
+            static_cast<double>(coordinates.z()));
+        return tf_inv_ * map_coordinates;
+    }
 
     /**
      * Convert discrete coordinates to patch index.

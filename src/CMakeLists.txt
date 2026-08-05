@@ -34,6 +34,8 @@ set(lama_SOURCES
     sdm/truncated_signed_distance_map.cpp
 )
 
+include(CheckCXXCompilerFlag)
+
 # vendor (or third party) software
 add_subdirectory(../vendor/lz4      vendor/lz4)
 add_subdirectory(../vendor/minisam  vendor/minisam)
@@ -62,7 +64,9 @@ target_include_directories(iris_lama
 target_compile_features(iris_lama PUBLIC cxx_std_14)
 target_compile_options(iris_lama PRIVATE -Wall -Wextra)
 
-if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
+check_cxx_compiler_flag("-faligned-new" IRIS_LAMA_HAS_FALIGNED_NEW)
+
+if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm" AND IRIS_LAMA_HAS_FALIGNED_NEW)
     target_compile_options(iris_lama PRIVATE -faligned-new)
 endif()
 

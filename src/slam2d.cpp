@@ -142,10 +142,24 @@ bool lama::Slam2D::enoughMotion(const Pose2D& odometry)
 
 bool lama::Slam2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry, double timestamp)
 {
+    return updateInternal(surface, odometry, Pose2D(), false, timestamp);
+}
+
+bool lama::Slam2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                          const Pose2D& initial_guess, double timestamp)
+{
+    return updateInternal(surface, odometry, initial_guess, true, timestamp);
+}
+
+bool lama::Slam2D::updateInternal(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                                  const Pose2D& initial_guess, bool has_guess, double timestamp)
+{
     Timer timer(true);
 
     if (not has_first_scan){
         odom_ = odometry;
+        if (has_guess)
+            pose_ = initial_guess;
         updateMaps(surface);
 
         if (summary){
@@ -169,11 +183,16 @@ bool lama::Slam2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odome
         std::abs(odelta.rotation()) <= rot_thresh_)
         return false;
 
-    pose_ = ppose;
     odom_ = odometry;
 
-    // 2. Optimize
+    // 2. Optimize. If an external initial guess (e.g. CSM) is available, start
+    // the ICP/scan-match optimization from it instead of the odometry prediction.
     Timer time_solving(true);
+
+    if (has_guess)
+        pose_ = initial_guess;
+    else
+        pose_ = ppose;
 
     MatchSurface2D match_surface(distance_map_, surface, pose_.state );
     Solve(solver_options_, match_surface, 0);
@@ -204,6 +223,60 @@ uint64_t lama::Slam2D::getMemoryUsage() const
     memory += distance_map_->memory();
 
     return memory;
+}
+
+void lama::Slam2D::rotateMap(double angle)
+{
+    if (std::abs(angle) < 1e-9 || occupancy_map_ == nullptr || distance_map_ == nullptr)
+        return;
+
+    const double c = std::cos(angle), s = std::sin(angle);
+
+    ProbabilisticOccupancyMap* new_occ =
+        new ProbabilisticOccupancyMap(occupancy_map_->resolution, occupancy_map_->patch_length);
+    DynamicDistanceMap* new_dm =
+        new DynamicDistanceMap(distance_map_->resolution, distance_map_->patch_length);
+    new_dm->setMaxDistance(distance_map_->maxDistance());
+
+    // 1st pass: occupied cells (obstacles) -> set occupied + add to distance map
+    occupancy_map_->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map_->isOccupied(coord)) return;
+        const Vector3d w = occupancy_map_->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (new_occ->setOccupied(m))
+            new_dm->addObstacle(m);
+    });
+    // 2nd pass: free cells (skip targets already occupied by another cell)
+    occupancy_map_->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map_->isFree(coord)) return;
+        const Vector3d w = occupancy_map_->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (not new_occ->isOccupied(m))
+            new_occ->setFree(m);
+    });
+    // 3rd pass: unknown cells
+    occupancy_map_->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map_->isUnknown(coord)) return;
+        const Vector3d w = occupancy_map_->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (not new_occ->isOccupied(m) and not new_occ->isFree(m))
+            new_occ->setUnknown(m);
+    });
+
+    new_dm->update();
+
+    delete distance_map_;
+    delete occupancy_map_;
+    distance_map_ = new_dm;
+    occupancy_map_ = new_occ;
+
+    // 机器人位姿同步旋转到新地图坐标系，保证物理位置不变
+    pose_ = Pose2D(c*pose_.x() - s*pose_.y(),
+                   s*pose_.x() + c*pose_.y(),
+                   pose_.rotation() + angle);
 }
 
 uint64_t lama::Slam2D::getMemoryUsage(uint64_t& occmem, uint64_t& dmmem) const

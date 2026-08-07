@@ -134,6 +134,12 @@ public:
 
     bool update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry, double timestamp);
 
+    // Update with an external initial guess (e.g. from correlative scan matching).
+    // When provided, the ICP/scan-match optimization starts from `initial_guess`
+    // instead of the pose predicted from the odometry delta alone.
+    bool update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                const Pose2D& initial_guess, double timestamp);
+
     uint64_t getMemoryUsage() const;
     uint64_t getMemoryUsage(uint64_t& occmem, uint64_t& dmmem) const;
 
@@ -148,6 +154,11 @@ public:
 
     inline Pose2D getPose() const
     { return pose_; }
+
+    // Rotate the built occupancy & distance maps in place by `angle` (radians),
+    // and rotate the current pose accordingly so the robot keeps its physical
+    // location. Used to align the map walls to the coordinate axes (0/90 deg).
+    void rotateMap(double angle);
 
     const ProbabilisticOccupancyMap* getOccupancyMap() const
     { return occupancy_map_; }
@@ -167,6 +178,9 @@ private:
     RobustCostPtr makeRobust(const std::string& name);
 
     void updateMaps(const PointCloudXYZ::Ptr& cloud);
+
+    bool updateInternal(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                        const Pose2D& initial_guess, bool has_guess, double timestamp);
 
 private:
     SolverOptions solver_options_;

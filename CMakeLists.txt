@@ -17,6 +17,11 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 # the code
 add_subdirectory(src)
 
+# Only run install/export/package-config generation when iris_lama is the
+# top-level project (i.e. built standalone). When used as a subdirectory
+# (e.g. from maplite) this machinery is not needed and would fail because
+# CMAKE_PROJECT_NAME then refers to the parent project.
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 # header files, note the "/" after include
 install(DIRECTORY include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
@@ -54,3 +59,4 @@ install(FILES
 install(FILES
   ${CMAKE_SOURCE_DIR}/package.xml
   DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/${PROJECT_NAME})
+endif()

@@ -110,6 +110,60 @@ void lama::Loc2D::Init(const Options& options)
 lama::Loc2D::~Loc2D()
 {}
 
+void lama::Loc2D::rotateMap(double angle)
+{
+    if (std::abs(angle) < 1e-9 || occupancy_map == nullptr || distance_map == nullptr)
+        return;
+
+    const double c = std::cos(angle), s = std::sin(angle);
+
+    SimpleOccupancyMap* new_occ =
+        new SimpleOccupancyMap(occupancy_map->resolution, occupancy_map->patch_length);
+    DynamicDistanceMap* new_dm =
+        new DynamicDistanceMap(distance_map->resolution, distance_map->patch_length);
+    new_dm->setMaxDistance(distance_map->maxDistance());
+
+    // 1st pass: occupied cells (obstacles) -> set occupied + add to distance map
+    occupancy_map->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map->isOccupied(coord)) return;
+        const Vector3d w = occupancy_map->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (new_occ->setOccupied(m))
+            new_dm->addObstacle(m);
+    });
+    // 2nd pass: free cells (skip targets already occupied by another cell)
+    occupancy_map->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map->isFree(coord)) return;
+        const Vector3d w = occupancy_map->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (not new_occ->isOccupied(m))
+            new_occ->setFree(m);
+    });
+    // 3rd pass: unknown cells
+    occupancy_map->visit_all_cells([&](const Vector3ui& coord){
+        if (not occupancy_map->isUnknown(coord)) return;
+        const Vector3d w = occupancy_map->m2w(coord);
+        const Vector3d wr(c*w.x() - s*w.y(), s*w.x() + c*w.y(), 0.0);
+        const Vector3ui m = new_occ->w2m(wr);
+        if (not new_occ->isOccupied(m) and not new_occ->isFree(m))
+            new_occ->setUnknown(m);
+    });
+
+    new_dm->update();
+
+    delete occupancy_map;
+    delete distance_map;
+    occupancy_map = new_occ;
+    distance_map = new_dm;
+
+    // 机器人位姿同步旋转到新地图坐标系，保证物理位置不变
+    pose_ = Pose2D(c*pose_.x() - s*pose_.y(),
+                   s*pose_.x() + c*pose_.y(),
+                   pose_.rotation() + angle);
+}
+
 bool lama::Loc2D::enoughMotion(const Pose2D& odometry)
 {
     if (not has_first_scan)
@@ -125,8 +179,23 @@ bool lama::Loc2D::enoughMotion(const Pose2D& odometry)
 
 bool lama::Loc2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry, double , bool force_update)
 {
+    return updateInternal(surface, odometry, Pose2D(), false, force_update);
+}
+
+bool lama::Loc2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                         const Pose2D& initial_guess, double , bool force_update)
+{
+    return updateInternal(surface, odometry, initial_guess, true, force_update);
+}
+
+bool lama::Loc2D::updateInternal(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                                 const Pose2D& initial_guess, bool has_guess, bool force_update)
+{
     if (not has_first_scan) {
         odom_ = odometry;
+
+        if (has_guess)
+            pose_ = initial_guess;
 
         has_first_scan = true;
 
@@ -149,8 +218,14 @@ bool lama::Loc2D::update(const PointCloudXYZ::Ptr& surface, const Pose2D& odomet
     if (not force_update and not enoughMotion(odometry))
         return false;
 
-    pose_ = ppose;
     odom_ = odometry;
+
+    // Use the external initial guess (e.g. CSM) if available, otherwise
+    // fall back to the pose predicted from the odometry delta.
+    if (has_guess)
+        pose_ = initial_guess;
+    else
+        pose_ = ppose;
 
     if (do_global_localization_){
         // Use a maximum number of global localizations to prevent an infinity loop.

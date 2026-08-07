@@ -112,6 +112,12 @@ public:
 
     bool update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry, double timestamp, bool force_update = false);
 
+    // Update with an external initial guess (e.g. from correlative scan matching).
+    // When provided, the ICP/scan-match optimization starts from `initial_guess`
+    // instead of the pose predicted from the odometry delta alone.
+    bool update(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                const Pose2D& initial_guess, double timestamp, bool force_update = false);
+
     void triggerGlobalLocalization();
 
     inline void setPose(const Pose2D& pose)
@@ -119,6 +125,11 @@ public:
 
     inline const Pose2D& getPose() const
     { return pose_; }
+
+    // Rotate the built occupancy & distance maps in place by `angle` (radians),
+    // and rotate the current pose accordingly so the robot keeps its physical
+    // location. Used to align the map walls to the coordinate axes (0/90 deg).
+    void rotateMap(double angle);
 
     inline const Matrix3d& getCovar() const
     { return cov_; }
@@ -134,6 +145,9 @@ private:
     void addSamplingCovariance(const PointCloudXYZ::Ptr& surface);
 
     void globalLocalization(const PointCloudXYZ::Ptr& surface);
+
+    bool updateInternal(const PointCloudXYZ::Ptr& surface, const Pose2D& odometry,
+                        const Pose2D& initial_guess, bool has_guess, bool force_update);
 
     StrategyPtr makeStrategy(const std::string& name);
     RobustCostPtr makeRobust(const std::string& name);
